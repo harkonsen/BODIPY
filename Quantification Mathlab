@@ -1,0 +1,221 @@
+%% Aufräumen
+clc;
+clear all;
+close all;
+
+%% Parameter
+darstellen = 0; % 0 um Abbildungen auszublenden, 1 um Abbildungen anzuzeigen
+Bildschnitt = 0; % 0 um normales Bild zu analysieren, 1 um Bildzuschnitt zu
+analysieren
+Schnittdimension = 1700; % Bildzuschnitt definieren, dafür Zahl ändern
+Scheibengroesse = 20; % an einem Bildausschnitt testen und von Hand nachzählen
+Erkennungsparameter = 8;
+Zellgroessenvariation_min = 0.3;
+Zellgroessenvariation_max = 2;
+Gruppierungsbreite = 100;
+Histogrammkorrektur = Gruppierungsbreite; % Zellschrott-Peak aus Zellzählung
+herausnehmen
+
+%% Bilder im Ordner identifizieren und zählen
+Bilddateien = dir('*.jpg'); % alle .jpg im aktuellen Ordner laden
+Dateianzahl = length(Bilddateien); % Anzahl der Bilder
+
+%% Variablen
+Mittel_G_Liste = strings(Dateianzahl/2,1);
+Bildnamen_Blau = strings(Dateianzahl/2,1);
+mittlereFlaeche_Liste = strings(Dateianzahl/2,1);
+Zellen_Liste = strings(Dateianzahl/2,1);
+Mittel_G_ueber_Zellen_Liste = strings(Dateianzahl/2,1);
+mittlereFlaeche_zum_Lernen_Liste = zeros(Dateianzahl/2,1);
+
+%% Bilder laden
+for ii=1:1:Dateianzahl
+aktuellerBildname = Bilddateien(ii).name; % Bildname geladen
+[aktuellesBild, Farbkarte] = imread(aktuellerBildname); % Bild eingelesen
+Bilder{ii} = aktuellesBild; % speichert Bild in Liste
+Farbkarten{ii} = Farbkarte;
+disp(['Bilder laden. Fortschritt: ',num2str(ii/Dateianzahl*100),' %']);
+end
+
+%% Ermittelte bisher erlernte mittlere Fläche aus dem Workspace laden
+if(exist(['Zwischenspeicher_Flaeche.mat']) == 2)
+load('Zwischenspeicher_Flaeche.mat');
+mittlereFlaeche_erlernt = mittlereFlaeche_zum_Lernen;
+ 
+
+else
+mittlereFlaeche_erlernt = 0;
+end
+
+for i=1:2:Dateianzahl % Schleife (Verarbeitung von Bildpaaren: blaues Bild, dann grünes
+Bild)
+% Bildnamen speichern
+Index = (i+1)/2;
+Bildnamen_Blau(Index,1) = Bilddateien(i).name;
+
+%% Auswertung grünes Bild
+Bild_gruen = Bilder{i+1};
+Farbkarte_gruen = Farbkarten{i+1};
+
+% Grüner Kanal
+[~,G,~] = imsplit(Bild_gruen);
+
+% Grünen Kanal darstellen
+if (darstellen == 1)
+figure();
+subplot(3,3,1);
+imshow(G);
+title('Grüner Kanal')
+end
+
+% Mittelwert der Intensität des grünen Signals
+Mittel_G = mean(mean(G));
+Mittel_G_Liste(Index,1) = replace(num2str(Mittel_G),".",",");
+
+%% Auswertung blaues Bild
+Bild_blau = Bilder{i};
+Farbkarte_blau = Farbkarten{i};
+
+% Blauer Kanal
+[~,~,B] = imsplit(Bild_blau);
+
+% Blauen Kanal darstellen
+if (darstellen == 1)
+subplot(3,3,2);
+imshow(B);
+title('Blauer Kanal');
+end
+
+% Bild zuschneiden zur Parametereinstellung
+if (Bildschnitt == 1)
+[a,b] = size(B);
+B = imcrop(B,[Schnittdimension Schnittdimension a-Schnittdimension b-Schnittdimension]);
+subplot(3,3,9);
+image(B);
+axis equal;
+ 
+
+title('Blau zugeschnitten')
+end
+
+% Vordergrundelemente erkennen
+Strukturelement = strel('disk',Scheibengroesse);
+Hintergrund = imopen(B,Strukturelement);
+
+if (darstellen == 1)
+subplot(3,3,3);
+imshow(Hintergrund);
+title('Hintergrund');
+end
+
+B2 = B - Hintergrund;
+if (darstellen == 1)
+subplot(3,3,4);
+imshow(B2);
+title('Vordergrund');
+end
+
+% Verbesserung des Bildes
+B3 = imadjust(B2);
+if (darstellen == 1)
+subplot(3,3,5);
+imshow(B3);
+title('Bildkorrektur');
+end
+
+% Binarisierung
+B4 = imbinarize(B3,'adaptive'); % Bild binarisieren
+if (darstellen == 1)
+subplot(3,3,6);
+imshow(B4);
+title('Binärbild');
+end
+
+% Zellkerne (zusammenhängende Pixel) erkennen
+zusammenhaengende_Pixel = bwconncomp(B4, Erkennungsparameter);
+AnzahlObjekte = zusammenhaengende_Pixel.NumObjects;
+
+% Erkannte Zellkerne in RGB-Darstellung anzeigen
+markieren = labelmatrix(zusammenhaengende_Pixel);
+RGB_Markierung = label2rgb(markieren,'spring','c','shuffle');
+if (darstellen == 1)
+subplot(3,3,7);
+imshow(RGB_Markierung);
+title(['RGB-Darstellung mit ',num2str(AnzahlObjekte),' erkannten Objekten']);
+end
+
+% Flächen berechnen
+ 
+
+Zellkerndaten = regionprops(zusammenhaengende_Pixel,'basic'); % Daten sammeln
+Zellkernflaechen = [Zellkerndaten.Area]; % Fläche aus Daten auslesen
+subplot(3,3,8);
+Histogramm_1= histogram(Zellkernflaechen);
+maximale_Kanten = max(Histogramm_1.BinLimits);
+if (maximale_Kanten>Histogrammkorrektur)
+Histogramm =
+histogram(Zellkernflaechen,'BinEdges',Histogrammkorrektur:Gruppierungsbreite:maximale_Kanten);
+
+% Überlagernde Zellkerne auseinander rechnen und ermittelte Flächengröße mit
+(erlerntem/bisher ermitteltem) Mittelwert vergleichen
+Zellen = 0;
+[m,index] = max(Histogramm.Values);
+Flaechengroesse = (index+1) * Histogramm.BinWidth - 1/2 * Histogramm.BinWidth;
+
+if( (Flaechengroesse < Zellgroessenvariation_min * mittlereFlaeche_erlernt) ||
+(Flaechengroesse > Zellgroessenvariation_max * mittlereFlaeche_erlernt) )
+% Wenn die Bedingung erfüllt ist, dann weicht die Flächengröße erheblich vom bisherigen
+Mittelwert ab
+if (mittlereFlaeche_erlernt > 0)
+% Wenn der bisher erlernte Wert größer 0 ist, dann wird Flaechengroesse damit ersetzt
+Flaechengroesse = mittlereFlaeche_erlernt;
+end
+end
+mittlereFlaeche_Liste(Index,1) = replace(num2str(Flaechengroesse),".",",");
+
+for c=1:1:Histogramm.NumBins
+Flaeche = c * Histogramm.BinWidth - 1/2 * Histogramm.BinWidth;
+if (Flaeche >= Zellgroessenvariation_min * Flaechengroesse)
+if (Flaeche >= Zellgroessenvariation_max * Flaechengroesse)
+Gesamtflaeche = Flaeche * Histogramm.Values(c);
+Zellen = Zellen + Gesamtflaeche / Flaechengroesse;
+else
+Zellen = Zellen + Histogramm.Values(c);
+end
+
+end
+end
+
+title(['Flächen-Histogramm mit ',num2str(Zellen),' erkannten Zellen']);
+
+Zellen_Liste(Index,1) = replace(num2str(Zellen),".",",");
+else
+disp(['Bild ',Bilddateien(i).name,' konnte nicht ausgewertet werden'])
+end
+
+% Mittlere Flächengröße darstellen und in Liste speichern
+if (darstellen == 1)
+subplot(3,3,9);
+bar(Flaechengroesse,m);
+ 
+
+title('Mittlere Zellgröße');
+end
+mittlereFlaeche_zum_Lernen_Liste(Index,1) = Flaechengroesse;
+
+%% Verhältnis Grün zu Zellkernen
+Mittel_G_ueber_Zellen_Liste(Index,1) = replace(num2str(Mittel_G/Zellen),".",",");
+
+if (darstellen == 0)
+close all;
+end
+disp(['Bilder auswerten. Fortschritt: ',num2str(i/Dateianzahl*100),' %']);
+end
+
+%% Tabelle erstellen
+Ergebnistabelle = table(Bildnamen_Blau, Mittel_G_Liste, mittlereFlaeche_Liste,
+Zellen_Liste, Mittel_G_ueber_Zellen_Liste);
+
+%% Mittlere Flächengröße für nächsten Durchlauf speichern
+mittlereFlaeche_zum_Lernen = mean(mittlereFlaeche_zum_Lernen_Liste);
+save('Zwischenspeicher_Flaeche','mittlereFlaeche_zum_Lernen');
